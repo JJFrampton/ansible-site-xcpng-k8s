@@ -1,0 +1,9 @@
+all:
+  hosts:
+    10.0.0.37:
+    10.0.0.45:
+  children:
+    masters:
+      10.0.0.37:
+    workers:
+      10.0.0.45:

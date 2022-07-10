@@ -1,0 +1,7 @@
+---
+- name: test connection
+  hosts: all
+  tasks:
+    - name: ls files
+      find:
+        paths: "/"
