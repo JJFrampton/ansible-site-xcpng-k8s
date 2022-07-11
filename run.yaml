@@ -54,7 +54,7 @@
       shell:
         #cmd: 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
         #cmd: 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} edge" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
-        cmd: 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
+        cmd: "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null"
     - name: Update packages
       apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
     - name: Install Docker Engine
@@ -88,6 +88,39 @@
       systemd:
         name: containerd
         enabled: yes
+
+- name: Install Kube Tools
+  hosts: all
+  become: yes
+  tasks:
+    - name: Docker keyrings rm /usr
+      file:
+        path: /usr/share/keyrings/kubernetes-archive-keyring.gpg
+        state: absent
+    - name: Kube keyrings pull
+      shell:
+        cmd: "curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+    - name: Kube repo setup
+      shell:
+        cmd: "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main\" | sudo tee /etc/apt/sources.list.d/kubernetes.list"
+    - name: Update packages
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+    - name: Install
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+    - name: Freeze versions
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
 
 - name: Master set up
   hosts: masters
