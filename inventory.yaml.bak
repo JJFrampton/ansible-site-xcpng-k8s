@@ -4,8 +4,6 @@ all:
     10.0.0.45:
   children:
     masters:
-      hosts:
-        10.0.0.37:
+      10.0.0.37:
     workers:
-      hosts:
-        10.0.0.45:
+      10.0.0.45:

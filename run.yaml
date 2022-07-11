@@ -1,7 +1,129 @@
 ---
-- name: test connection
+- name: Preflight checks
   hosts: all
+  become: yes
   tasks:
-    - name: ls files
-      find:
-        paths: "/"
+    - name: Confirm unique Product UUID
+      shell:
+        cmd: "cat /sys/class/dmi/id/product_uuid"
+      register: uuid
+    - debug: msg="{{ uuid.stdout }}"
+    - name: Confirm unique MAC
+      shell:
+        cmd: " ip link | awk '{print $2}' | grep -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' "
+      register: mac
+    - debug: msg="{{ mac.stdout }}"
+    - name: Update packages
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+    - name: Upgrade packages
+      apt: upgrade=dist force_apt_get=yes
+    - name: Install utilities
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - ca-certificates
+        - curl
+        - gnupg
+        - lsb-release
+        # docker specific
+        - gnupg-agent
+        - apt-transport-https
+        - software-properties-common
+
+- name: Docker setup
+  hosts: all
+  become: yes
+  tasks:
+    - name: Docker keyrings dir
+      file:
+        path: /etc/apt/keyrings
+    - name: Docker keyrings rm /etc
+      file:
+        path: /etc/apt/keyrings/docker.gpg
+        state: absent
+    - name: Docker keyrings rm /usr
+      file:
+        path: /usr/share/keyrings/docker-archive-keyring.gpg
+        state: absent
+    - name: Docker keyrings pull
+      shell:
+        #cmd: "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+        cmd: "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg"
+    - name: Docker repo setup
+      shell:
+        #cmd: 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
+        #cmd: 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} edge" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
+        cmd: 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
+    - name: Update packages
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+    - name: Install Docker Engine
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - docker-ce
+        - docker-ce-cli
+        - containerd.io
+        - docker-compose-plugin
+    - name: create docker group
+      group:
+        name: docker
+    - name: Add user to docker group
+      user:
+        name: jframpton
+        append: yes
+        groups: docker
+    # - name: Refresh groups
+    #   shell:
+    #     cmd: "newgrp docker"
+    - name: Refresh groups - reset ssh connection to allow user changes to affect ansible user
+      ansible.builtin.meta:
+        reset_connection
+    - name: Enable auto start docker
+      systemd:
+        name: docker
+        enabled: yes
+    - name: Enable auto start container.d
+      systemd:
+        name: containerd
+        enabled: yes
+
+- name: Master set up
+  hosts: masters
+  become: yes
+  tasks:
+    - name: Enable UFW
+      ufw:
+        state: enabled
+    - name: Open worker ports
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        # control plane
+        - 22
+        - 6443
+        - 2379:2380
+        - 10250
+        - 10259
+        - 10257
+
+- name: Workers set up
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Enable UFW
+      ufw:
+        state: enabled
+    - name: Open worker ports
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        # worker nodes
+        - 22
+        - 10250
+        - 30000:32767
