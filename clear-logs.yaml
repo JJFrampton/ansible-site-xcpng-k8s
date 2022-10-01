@@ -1,0 +1,5 @@
+// /var/log/syslog
+needs to be removed then touched
+// rm /usr/lib/modules/<older versions>
+should implement the following commands in a playbook
+https://www.digitalocean.com/community/tutorials/how-to-manage-logfiles-with-logrotate-on-ubuntu-16-04
